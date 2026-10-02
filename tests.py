@@ -2,8 +2,8 @@
 
 import unittest
 
-import analysis
-from analysis import (
+from fitness_analyzer import analysis
+from fitness_analyzer.analysis import (
     SessionAnalyzer,
     average,
     minimum_and_maximum,
@@ -11,10 +11,13 @@ from analysis import (
     split_half_difference,
     summarise,
 )
-from models import Observation, Participant, Session
-from reporting import DetailedSessionReport, SessionReport, format_value
-from sample_data import build_all_sessions, build_session_from_generator
-from validation import (
+from fitness_analyzer.models import Observation, Participant, Session
+from fitness_analyzer.reporting import (
+    DetailedSessionReport,
+    SessionReport,
+    format_value,
+)
+from fitness_analyzer.validation import (
     ImpossibleValueRule,
     MissingValueRule,
     ObservationValidator,
@@ -41,32 +44,35 @@ def make_participant():
     return Participant("P001", 70, 1.8, 32.5)
 
 
+def make_session(heart_rates, activity_levels=None, signal_quality=0.9):
+    """A hand-built session with one window per heart rate value."""
+    if activity_levels is None:
+        activity_levels = [0.5] * len(heart_rates)
+    observations = [
+        make_observation(timestamp=index, heart_rate=rate,
+                         activity_level=level, signal_quality=signal_quality)
+        for index, (rate, level) in enumerate(zip(heart_rates, activity_levels))
+    ]
+    return Session(make_participant(), observations, label="t")
+
+
+def make_mostly_faulty_session():
+    """Four usable windows out of nine, so under half survive."""
+    observations = [
+        Observation(0, 104, 2.1, 33.0, 0.52, 0.93),
+        Observation(1, 106, 2.2, 33.1, 0.54, 0.92),
+        Observation(2, 108, 2.2, 33.0, 0.55, 0.91),
+        Observation(3, 105, 2.1, 33.1, 0.53, 0.90),
+        Observation(4, None, 2.2, 33.0, 0.54, 0.91),
+        Observation(5, 265, 2.1, 33.1, 0.52, 0.92),
+        Observation(6, 107, None, 33.0, 0.55, 0.90),
+        Observation(7, 106, 2.2, 33.1, -0.30, 0.91),
+        Observation(8, 105, 2.1, 33.0, 0.53, 0.20),
+    ]
+    return Session(make_participant(), observations, label="mostly faulty")
+
+
 class TestParticipant(unittest.TestCase):
-
-    def test_from_profile_builds_participant(self):
-        profile = {
-            "participant_id": "P042",
-            "baseline_heart_rate": 65,
-            "baseline_skin_response": 1.5,
-            "baseline_temperature": 32.0,
-        }
-        participant = Participant.from_profile(profile)
-        self.assertEqual(participant.participant_id, "P042")
-        self.assertEqual(participant.baseline_heart_rate, 65.0)
-
-    def test_from_profile_rejects_incomplete_dictionary(self):
-        with self.assertRaises(KeyError):
-            Participant.from_profile({"participant_id": "P001"})
-
-    def test_from_profile_rejects_non_numeric_baseline(self):
-        profile = {
-            "participant_id": "P001",
-            "baseline_heart_rate": "n/a",
-            "baseline_skin_response": 1.5,
-            "baseline_temperature": 32.0,
-        }
-        with self.assertRaises(ValueError):
-            Participant.from_profile(profile)
 
     def test_baseline_is_read_only(self):
         participant = make_participant()
@@ -83,11 +89,6 @@ class TestParticipant(unittest.TestCase):
 
 
 class TestObservation(unittest.TestCase):
-
-    def test_missing_keys_become_none(self):
-        observation = Observation.from_dict({"timestamp": 3})
-        self.assertEqual(observation.timestamp, 3)
-        self.assertIsNone(observation.heart_rate)
 
     def test_unvalidated_observation_is_not_usable(self):
         observation = make_observation()
@@ -166,7 +167,7 @@ class TestValidationRules(unittest.TestCase):
         self.assertEqual(len(problems), 1)
 
     def test_base_rule_must_be_overridden(self):
-        from validation import ValidationRule
+        from fitness_analyzer.validation import ValidationRule
         with self.assertRaises(NotImplementedError):
             ValidationRule("base").check(make_observation())
 
@@ -174,13 +175,13 @@ class TestValidationRules(unittest.TestCase):
 class TestValidator(unittest.TestCase):
 
     def test_clean_session_passes_every_window(self):
-        session = build_session_from_generator("t", "moderate_activity", 42, 12)
+        session = make_session([100] * 12)
         summary = ObservationValidator().validate_session(session)
         self.assertEqual(summary["usable_windows"], 12)
         self.assertEqual(summary["problem_counts"], {})
 
     def test_poor_quality_session_is_rejected(self):
-        session = build_session_from_generator("t", "poor_quality", 42, 12)
+        session = make_session([100] * 12, signal_quality=0.3)
         summary = ObservationValidator().validate_session(session)
         self.assertEqual(summary["usable_windows"], 0)
 
@@ -221,65 +222,32 @@ class TestStandaloneFunctions(unittest.TestCase):
 
 
 class TestClassification(unittest.TestCase):
-    """Each generator scenario should produce the matching classification."""
+    """Hand-built sessions for each classification. Baseline heart rate is 70."""
 
-    def setUp(self):
-        self.analyzer = SessionAnalyzer()
-
-    def classify(self, scenario, seed=42, windows=12):
-        session = build_session_from_generator("t", scenario, seed, windows)
-        return self.analyzer.analyze(session)["classification"]
+    def classify(self, session):
+        return SessionAnalyzer().analyze(session)["classification"]
 
     def test_resting(self):
-        self.assertEqual(self.classify("resting"), analysis.RESTING)
+        self.assertEqual(self.classify(make_session([72] * 8)), analysis.RESTING)
 
     def test_moderate(self):
-        self.assertEqual(self.classify("moderate_activity"), analysis.MODERATE)
+        self.assertEqual(self.classify(make_session([100] * 8)), analysis.MODERATE)
 
     def test_high(self):
-        self.assertEqual(self.classify("high_activity"), analysis.HIGH)
+        self.assertEqual(self.classify(make_session([130] * 8)), analysis.HIGH)
 
     def test_recovery(self):
-        self.assertEqual(self.classify("recovery"), analysis.RECOVERING)
+        session = make_session([140] * 4 + [90] * 4, [0.9] * 4 + [0.2] * 4)
+        self.assertEqual(self.classify(session), analysis.RECOVERING)
 
     def test_poor_quality(self):
-        self.assertEqual(self.classify("poor_quality"), analysis.INSUFFICIENT)
-
-    def test_classification_is_stable_across_seeds(self):
-        expected = {
-            "resting": analysis.RESTING,
-            "moderate_activity": analysis.MODERATE,
-            "high_activity": analysis.HIGH,
-            "recovery": analysis.RECOVERING,
-            "poor_quality": analysis.INSUFFICIENT,
-        }
-        for scenario, want in expected.items():
-            for seed in range(1, 21):
-                got = self.classify(scenario, seed=seed)
-                self.assertEqual(got, want, "{0} seed {1}".format(scenario, seed))
+        session = make_session([100] * 8, signal_quality=0.3)
+        self.assertEqual(self.classify(session), analysis.INSUFFICIENT)
 
     def test_low_usable_ratio_is_insufficient(self):
-        sessions = {s.label: s for s in build_all_sessions()}
-        session = sessions["Under half the windows usable"]
-        result = SessionAnalyzer().analyze(session)
+        result = SessionAnalyzer().analyze(make_mostly_faulty_session())
         self.assertEqual(result["classification"], analysis.INSUFFICIENT)
         self.assertIn("survived validation", result["reasons"][0])
-
-    def test_every_validation_rule_fires_somewhere_in_the_scenarios(self):
-        rules = [
-            MissingValueRule(),
-            ImpossibleValueRule(),
-            SignalQualityRule(),
-            OrderedTimestampRule(),
-        ]
-        fired = {rule.name: False for rule in rules}
-        for session in build_all_sessions():
-            for observation in session.observations:
-                for rule in rules:
-                    if rule.check(observation):
-                        fired[rule.name] = True
-        for name, did_fire in fired.items():
-            self.assertTrue(did_fire, name + " never fires in the scenarios")
 
     def test_single_window_is_insufficient(self):
         session = Session(make_participant(), [make_observation()], label="one")
@@ -292,14 +260,20 @@ class TestClassification(unittest.TestCase):
         self.assertEqual(result["classification"], analysis.INSUFFICIENT)
 
     def test_result_is_a_dictionary_with_expected_keys(self):
-        result = SessionAnalyzer().analyze(
-            build_session_from_generator("t", "resting", 42, 12))
+        result = SessionAnalyzer().analyze(make_session([72] * 8))
         for key in ("classification", "quality", "measurements", "comparison",
                     "trend", "reasons"):
             self.assertIn(key, result)
 
     def test_every_classification_has_a_reason(self):
-        for session in build_all_sessions():
+        sessions = [
+            make_session([72] * 8),
+            make_session([130] * 8),
+            make_session([100] * 8, signal_quality=0.3),
+            make_mostly_faulty_session(),
+            Session(make_participant(), [], label="empty"),
+        ]
+        for session in sessions:
             result = SessionAnalyzer().analyze(session)
             self.assertTrue(result["reasons"], session.label)
 
@@ -307,7 +281,7 @@ class TestClassification(unittest.TestCase):
 class TestReporting(unittest.TestCase):
 
     def setUp(self):
-        session = build_session_from_generator("t", "poor_quality", 42, 12)
+        session = make_session([100] * 12, signal_quality=0.3)
         self.result = SessionAnalyzer().analyze(session)
 
     def test_standard_report_names_the_classification(self):

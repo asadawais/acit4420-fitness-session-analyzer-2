@@ -1,11 +1,8 @@
-"""Summary statistics, recovery detection and session classification.
-
-The constants below are taken from the ranges reported by calibration.py.
-"""
+"""Summary statistics, recovery detection and session classification."""
 
 import statistics
 
-from validation import ObservationValidator
+from .validation import ObservationValidator
 
 
 # A session needs enough usable windows to be summarised at all, and enough of
