@@ -247,7 +247,7 @@ class SessionAnalyzer:
     def _unusable_reasons(quality):
         """One line per rule that made rows unusable, with its row count."""
         return [
-            "{0} row(s) not usable because of {1}".format(count, name)
+            "{0} row(s) had {1}".format(count, name)
             for name, count in sorted(quality["problem_counts"].items())
         ]
 
