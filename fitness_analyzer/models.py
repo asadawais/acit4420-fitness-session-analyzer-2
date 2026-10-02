@@ -5,11 +5,12 @@ class Participant:
     """A person and their personal reference measurements."""
 
     def __init__(self, participant_id, baseline_heart_rate,
-                 baseline_skin_response, baseline_temperature):
+                 baseline_skin_response, baseline_temperature, name=None):
         if not isinstance(participant_id, str) or not participant_id.strip():
             raise ValueError("participant_id must be a non-empty string")
 
         self._participant_id = participant_id.strip()
+        self._name = name.strip() if isinstance(name, str) else ""
         self._baseline_heart_rate = float(baseline_heart_rate)
         self._baseline_skin_response = float(baseline_skin_response)
         self._baseline_temperature = float(baseline_temperature)
@@ -17,6 +18,10 @@ class Participant:
     @property
     def participant_id(self):
         return self._participant_id
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def baseline_heart_rate(self):
@@ -46,7 +51,7 @@ class Participant:
 
 
 class Observation:
-    """One measurement window, stored exactly as it arrived."""
+    """One measurement row, with its values converted to numbers."""
 
     def __init__(self, timestamp, heart_rate, skin_response, temperature,
                  activity_level, signal_quality):
@@ -73,7 +78,10 @@ class Observation:
         return list(self._problems)
 
     def record_validation(self, problems):
-        """Store the validation outcome. An empty list means the window passed."""
+        """Store the validation outcome as (field, reason) pairs.
+
+        An empty list means the observation passed.
+        """
         self._problems = list(problems)
         self._is_usable = len(self._problems) == 0
 
@@ -104,7 +112,7 @@ class Session:
 
     @property
     def observations(self):
-        # Returns a copy so windows cannot be added after validation has run.
+        # Returns a copy so rows cannot be added after validation has run.
         return list(self._observations)
 
     @property
@@ -124,6 +132,6 @@ class Session:
         return len(self._observations)
 
     def __repr__(self):
-        return "Session(label={0!r}, participant={1!r}, windows={2})".format(
+        return "Session(label={0!r}, participant={1!r}, rows={2})".format(
             self.label, self.participant.participant_id, self.total_count
         )

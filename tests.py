@@ -102,7 +102,7 @@ class TestObservation(unittest.TestCase):
 
     def test_problems_list_cannot_be_edited_from_outside(self):
         observation = make_observation()
-        observation.record_validation(["a problem"])
+        observation.record_validation([("heart_rate", "a problem")])
         observation.problems.append("injected")
         self.assertEqual(len(observation.problems), 1)
 
@@ -177,13 +177,13 @@ class TestValidator(unittest.TestCase):
     def test_clean_session_passes_every_window(self):
         session = make_session([100] * 12)
         summary = ObservationValidator().validate_session(session)
-        self.assertEqual(summary["usable_windows"], 12)
+        self.assertEqual(summary["usable_rows"], 12)
         self.assertEqual(summary["problem_counts"], {})
 
     def test_poor_quality_session_is_rejected(self):
         session = make_session([100] * 12, signal_quality=0.3)
         summary = ObservationValidator().validate_session(session)
-        self.assertEqual(summary["usable_windows"], 0)
+        self.assertEqual(summary["usable_rows"], 0)
 
     def test_empty_session_does_not_divide_by_zero(self):
         session = Session(make_participant(), [], label="empty")
@@ -247,7 +247,7 @@ class TestClassification(unittest.TestCase):
     def test_low_usable_ratio_is_insufficient(self):
         result = SessionAnalyzer().analyze(make_mostly_faulty_session())
         self.assertEqual(result["classification"], analysis.INSUFFICIENT)
-        self.assertIn("survived validation", result["reasons"][0])
+        self.assertIn("rows were usable", result["reasons"][0])
 
     def test_single_window_is_insufficient(self):
         session = Session(make_participant(), [make_observation()], label="one")
@@ -291,15 +291,15 @@ class TestReporting(unittest.TestCase):
     def test_detailed_report_adds_rejected_windows(self):
         standard = SessionReport(self.result).render()
         detailed = DetailedSessionReport(self.result).render()
-        self.assertNotIn("Rejected windows", standard)
-        self.assertIn("Rejected windows", detailed)
+        self.assertNotIn("Rows not used", standard)
+        self.assertIn("Rows not used", detailed)
 
     def test_detailed_report_overrides_the_title(self):
         self.assertIn("[detailed]", DetailedSessionReport(self.result).title())
 
     def test_report_handles_a_session_with_no_usable_windows(self):
         text = SessionReport(self.result).render()
-        self.assertIn("no usable windows", text)
+        self.assertIn("no usable rows", text)
 
 
 if __name__ == "__main__":

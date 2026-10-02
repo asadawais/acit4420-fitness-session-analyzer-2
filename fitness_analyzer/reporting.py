@@ -60,22 +60,22 @@ class SessionReport:
     def _quality_block(self):
         quality = self.result["quality"]
         lines = [format_heading("Data quality")]
-        lines.append("  {0} of {1} windows usable ({2}%)".format(
-            quality["usable_windows"],
-            quality["total_windows"],
+        lines.append("  {0} of {1} rows usable ({2}%)".format(
+            quality["usable_rows"],
+            quality["total_rows"],
             round(quality["usable_ratio"] * 100, 1),
         ))
         if quality["problem_counts"]:
-            lines.append("  Reasons for rejection:")
+            lines.append("  Why rows were not used:")
             for problem, count in sorted(quality["problem_counts"].items()):
                 lines.append("    {0:<40}{1:>3}".format(problem, count))
         return "\n".join(lines)
 
     def _measurement_block(self):
-        if self.result["quality"]["usable_windows"] == 0:
-            return format_heading("Measurements") + "\n  no usable windows to summarise"
+        if self.result["quality"]["usable_rows"] == 0:
+            return format_heading("Measurements") + "\n  no usable rows to summarise"
 
-        lines = [format_heading("Measurements (usable windows only)")]
+        lines = [format_heading("Measurements (usable rows only)")]
         lines.append("  {0:<16}{1:>10}{2:>10}{3:>10}".format(
             "field", "average", "minimum", "maximum"))
         for name, summary in self.result["measurements"].items():
@@ -110,7 +110,7 @@ class SessionReport:
 
 
 class DetailedSessionReport(SessionReport):
-    """Adds a per-window breakdown of every rejected observation.
+    """Adds a per-row breakdown of every observation that was not usable.
 
     Overrides render and title. The extra detail is useful when investigating
     a sensor fault but too noisy for the standard summary.
@@ -128,15 +128,15 @@ class DetailedSessionReport(SessionReport):
         return standard + "\n" + detail
 
     def _rejected_window_block(self):
-        rejected = self.result.get("rejected_detail", [])
-        if not rejected:
+        unusable = self.result.get("unusable_detail", [])
+        if not unusable:
             return ""
 
-        lines = [format_heading("Rejected windows")]
-        for window in rejected:
-            lines.append("  window {0}".format(window["timestamp"]))
-            for problem in window["problems"]:
-                lines.append("    - " + problem)
+        lines = [format_heading("Rows not used")]
+        for row in unusable:
+            lines.append("  timestamp {0}".format(row["timestamp"]))
+            for field, reason in row["problems"]:
+                lines.append("    - {0} {1}".format(field, reason))
         return "\n".join(lines)
 
 

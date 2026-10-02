@@ -115,7 +115,7 @@ class SessionAnalyzer:
             "trend": trend,
             "classification": classification,
             "reasons": reasons,
-            "rejected_detail": [
+            "unusable_detail": [
                 {"timestamp": o.timestamp, "problems": o.problems}
                 for o in session.rejected_observations()
             ],
@@ -169,19 +169,19 @@ class SessionAnalyzer:
         """
         reasons = []
 
-        usable = quality["usable_windows"]
+        usable = quality["usable_rows"]
         if usable < MINIMUM_USABLE_WINDOWS:
             reasons.append(
-                "only {0} of {1} windows were usable, at least {2} are needed".format(
-                    usable, quality["total_windows"], MINIMUM_USABLE_WINDOWS
+                "only {0} of {1} rows were usable, at least {2} are needed".format(
+                    usable, quality["total_rows"], MINIMUM_USABLE_WINDOWS
                 )
             )
             return INSUFFICIENT, reasons
 
         if quality["usable_ratio"] < MINIMUM_USABLE_RATIO:
             reasons.append(
-                "only {0}% of windows survived validation".format(
-                    percentage(usable, quality["total_windows"])
+                "only {0}% of rows were usable".format(
+                    percentage(usable, quality["total_rows"])
                 )
             )
             return INSUFFICIENT, reasons
