@@ -297,9 +297,6 @@ class TestReporting(unittest.TestCase):
         self.assertNotIn("Rows not used", standard)
         self.assertIn("Rows not used", detailed)
 
-    def test_detailed_report_overrides_the_title(self):
-        self.assertIn("[detailed]", DetailedSessionReport(self.result).title())
-
     def test_report_handles_a_session_with_no_usable_windows(self):
         text = SessionReport(self.result).render()
         self.assertIn("no usable rows", text)

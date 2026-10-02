@@ -133,6 +133,7 @@ class SessionAnalyzer:
             "session_id": session.session_id,
             "sources": list(session.sources),
             "participant_id": participant.participant_id,
+            "participant_name": participant.name,
             "baselines": {
                 "heart_rate": participant.baseline_heart_rate,
                 "skin_response": participant.baseline_skin_response,
