@@ -35,7 +35,7 @@ class SessionReport:
 
     def title(self):
         return "{0} (participant {1})".format(
-            self.result["label"], self.result["participant_id"]
+            self.result["session_id"], self.result["participant_id"]
         )
 
     def render(self):

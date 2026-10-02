@@ -95,9 +95,14 @@ class Observation:
 
 
 class Session:
-    """A training session, built from a Participant and its Observations."""
+    """A training session, built from a Participant and its Observations.
 
-    def __init__(self, participant, observations, label="session"):
+    Observations are kept in timestamp order, since the recovery check reads
+    them as a sequence. Gaps in the timestamps are allowed.
+    """
+
+    def __init__(self, participant, observations, session_id="session",
+                 sources=()):
         if not isinstance(participant, Participant):
             raise TypeError("participant must be a Participant object")
 
@@ -107,8 +112,12 @@ class Session:
                 raise TypeError("every observation must be an Observation object")
 
         self.participant = participant
-        self.label = label
-        self._observations = observations
+        self.session_id = session_id
+        self.sources = tuple(sources)
+        self._observations = sorted(
+            observations,
+            key=lambda item: item.timestamp if isinstance(item.timestamp, int) else -1,
+        )
 
     @property
     def observations(self):
@@ -132,6 +141,6 @@ class Session:
         return len(self._observations)
 
     def __repr__(self):
-        return "Session(label={0!r}, participant={1!r}, rows={2})".format(
-            self.label, self.participant.participant_id, self.total_count
+        return "Session(id={0!r}, participant={1!r}, rows={2})".format(
+            self.session_id, self.participant.participant_id, self.total_count
         )

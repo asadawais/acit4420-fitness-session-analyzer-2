@@ -102,7 +102,8 @@ class SessionAnalyzer:
         classification, reasons = self._classify(quality, comparison, trend)
 
         return {
-            "label": session.label,
+            "session_id": session.session_id,
+            "sources": list(session.sources),
             "participant_id": participant.participant_id,
             "baselines": {
                 "heart_rate": participant.baseline_heart_rate,

@@ -53,7 +53,7 @@ def make_session(heart_rates, activity_levels=None, signal_quality=0.9):
                          activity_level=level, signal_quality=signal_quality)
         for index, (rate, level) in enumerate(zip(heart_rates, activity_levels))
     ]
-    return Session(make_participant(), observations, label="t")
+    return Session(make_participant(), observations, session_id="t")
 
 
 def make_mostly_faulty_session():
@@ -69,7 +69,7 @@ def make_mostly_faulty_session():
         Observation(7, 106, 2.2, 33.1, -0.30, 0.91),
         Observation(8, 105, 2.1, 33.0, 0.53, 0.20),
     ]
-    return Session(make_participant(), observations, label="mostly faulty")
+    return Session(make_participant(), observations, session_id="mostly faulty")
 
 
 class TestParticipant(unittest.TestCase):
@@ -186,7 +186,7 @@ class TestValidator(unittest.TestCase):
         self.assertEqual(summary["usable_rows"], 0)
 
     def test_empty_session_does_not_divide_by_zero(self):
-        session = Session(make_participant(), [], label="empty")
+        session = Session(make_participant(), [], session_id="empty")
         summary = ObservationValidator().validate_session(session)
         self.assertEqual(summary["usable_ratio"], 0.0)
 
@@ -250,12 +250,12 @@ class TestClassification(unittest.TestCase):
         self.assertIn("rows were usable", result["reasons"][0])
 
     def test_single_window_is_insufficient(self):
-        session = Session(make_participant(), [make_observation()], label="one")
+        session = Session(make_participant(), [make_observation()], session_id="one")
         result = SessionAnalyzer().analyze(session)
         self.assertEqual(result["classification"], analysis.INSUFFICIENT)
 
     def test_empty_session_is_insufficient(self):
-        session = Session(make_participant(), [], label="empty")
+        session = Session(make_participant(), [], session_id="empty")
         result = SessionAnalyzer().analyze(session)
         self.assertEqual(result["classification"], analysis.INSUFFICIENT)
 
@@ -271,11 +271,11 @@ class TestClassification(unittest.TestCase):
             make_session([130] * 8),
             make_session([100] * 8, signal_quality=0.3),
             make_mostly_faulty_session(),
-            Session(make_participant(), [], label="empty"),
+            Session(make_participant(), [], session_id="empty"),
         ]
         for session in sessions:
             result = SessionAnalyzer().analyze(session)
-            self.assertTrue(result["reasons"], session.label)
+            self.assertTrue(result["reasons"], session.session_id)
 
 
 class TestReporting(unittest.TestCase):
