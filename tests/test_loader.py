@@ -1,3 +1,4 @@
+import csv
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,9 +109,13 @@ class TestLoadSessions(LoaderTestCase):
         self.assertEqual(reasons[1], "the file is empty")
 
     def test_csv_error_keeps_rows_read_before_it(self):
+        # A field longer than the csv module's limit raises csv.Error on
+        # every Python version, unlike a NUL byte, which 3.11+ accepts.
+        too_long = "7" * (csv.field_size_limit() + 1)
         path = write_sessions(self.folder, "s.csv", [
             VALID_ROWS[0],
-            "FIT-2026-001,P001,1,7\x000,1.2,32.4,0.1,0.95",
+            "FIT-2026-001,P001,1,{0},1.2,32.4,0.1,0.95".format(too_long),
+            VALID_ROWS[1],
         ])
         loader = self.load(path)
         self.assertEqual(loader.accepted_rows, 1)
