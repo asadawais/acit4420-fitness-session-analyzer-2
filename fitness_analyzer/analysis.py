@@ -5,21 +5,34 @@ import statistics
 from .validation import ObservationValidator
 
 
-# A session needs enough usable windows to be summarised at all, and enough of
-# the original windows must have survived for the summary to be representative.
-MINIMUM_USABLE_WINDOWS = 4
+# A session needs enough usable rows to be summarised at all, and enough of its
+# accepted rows must be usable for the summary to be representative.
+# Four is the smallest count the recovery check can work with: a last third of
+# at least two rows, plus at least two rows before it for the peak. With the
+# five or six rows per session in the official data, four usable rows also
+# means at least two thirds of the session is usable, so the ratio rule only
+# matters for longer sessions.
+MINIMUM_USABLE_ROWS = 4
 MINIMUM_USABLE_RATIO = 0.5
 
 # Heart rate above the participant's own baseline, in beats per minute.
-# Measured means: resting 0.8 to 3.2, moderate 25.7 to 30.2, high 54.5 to 61.4.
+# Calibrated in Assignment I: resting 0.8 to 3.2, moderate 25.7 to 30.2,
+# high 54.5 to 61.4. The official sessions give 0.8, 28.0 and 69.5.
 RESTING_CEILING = 12.0
 MODERATE_CEILING = 45.0
 
-# A recovering session declines from start to finish. Steady sessions drop at
-# most 10.5 bpm and 0.100 activity by chance, recovering ones drop at least
-# 24.2 bpm and 0.347. Both conditions must hold, since either alone is noisier.
+# A recovering session falls from a peak to a clearly lower end. The drop is
+# the peak minus the mean of the last third of the session, and the peak must
+# come before that last third. Both heart rate and activity must drop, since
+# either alone is noisier. The thresholds are kept from Assignment I.
+# FIT-2026-004 drops 58.0 bpm and 0.62 activity. FIT-2026-002 drops 14.0 bpm
+# and 0.18 activity, close to the heart rate threshold but under both.
 RECOVERY_HEART_RATE_DROP = 15.0
 RECOVERY_ACTIVITY_DROP = 0.25
+
+# The last third is never shorter than two rows, so one noisy final reading
+# cannot decide it alone.
+MINIMUM_LAST_THIRD = 2
 
 RESTING = "resting"
 MODERATE = "moderate activity"
@@ -53,17 +66,32 @@ def summarise(values):
     }
 
 
-def split_half_difference(values):
-    """First half mean minus last half mean. Positive means it declined.
+def last_third_size(count):
+    """How many values at the end count as the last third."""
+    return max(MINIMUM_LAST_THIRD, count // 3)
 
-    Returns None when there are too few values to split meaningfully.
+
+def peak_before_last_third(values):
+    """True when the highest value comes before the last third.
+
+    Needs at least MINIMUM_USABLE_ROWS values, otherwise returns False.
     """
-    if len(values) < 4:
+    if len(values) < MINIMUM_USABLE_ROWS:
+        return False
+    peak_index = values.index(max(values))
+    return peak_index < len(values) - last_third_size(len(values))
+
+
+def peak_to_end_drop(values):
+    """Peak minus the mean of the last third. Positive means it declined.
+
+    Returns None when there are too few values, or when the peak is inside
+    the last third, since then the session did not come down from it.
+    """
+    if not peak_before_last_third(values):
         return None
-    half = len(values) // 2
-    early = statistics.mean(values[:half])
-    late = statistics.mean(values[-half:])
-    return round(early - late, 3)
+    tail = values[-last_third_size(len(values)):]
+    return round(max(values) - statistics.mean(tail), 3)
 
 
 def percentage(part, whole):
@@ -145,9 +173,9 @@ class SessionAnalyzer:
         }
 
     def _describe_trend(self, heart_rates, activity_levels):
-        """Decline in heart rate and activity between the halves of a session."""
-        heart_rate_drop = split_half_difference(heart_rates)
-        activity_drop = split_half_difference(activity_levels)
+        """Fall in heart rate and activity from the peak to the last third."""
+        heart_rate_drop = peak_to_end_drop(heart_rates)
+        activity_drop = peak_to_end_drop(activity_levels)
 
         declining = (
             heart_rate_drop is not None
@@ -171,12 +199,13 @@ class SessionAnalyzer:
         reasons = []
 
         usable = quality["usable_rows"]
-        if usable < MINIMUM_USABLE_WINDOWS:
+        if usable < MINIMUM_USABLE_ROWS:
             reasons.append(
                 "only {0} of {1} rows were usable, at least {2} are needed".format(
-                    usable, quality["total_rows"], MINIMUM_USABLE_WINDOWS
+                    usable, quality["total_rows"], MINIMUM_USABLE_ROWS
                 )
             )
+            reasons.extend(self._unusable_reasons(quality))
             return INSUFFICIENT, reasons
 
         if quality["usable_ratio"] < MINIMUM_USABLE_RATIO:
@@ -185,6 +214,7 @@ class SessionAnalyzer:
                     percentage(usable, quality["total_rows"])
                 )
             )
+            reasons.extend(self._unusable_reasons(quality))
             return INSUFFICIENT, reasons
 
         elevation = comparison["heart_rate_above_baseline"]
@@ -194,8 +224,8 @@ class SessionAnalyzer:
 
         if trend["is_declining"]:
             reasons.append(
-                "heart rate fell {0} bpm and activity fell {1} from the first "
-                "half to the last".format(
+                "heart rate fell {0} bpm and activity fell {1} from the peak "
+                "to the last third of the session".format(
                     trend["heart_rate_drop"], trend["activity_drop"]
                 )
             )
@@ -204,16 +234,37 @@ class SessionAnalyzer:
         reasons.append(
             "heart rate averaged {0} bpm above the personal baseline".format(elevation)
         )
-        drop = trend["heart_rate_drop"]
-        if drop is not None:
-            direction = "fell {0}".format(drop) if drop >= 0 else "rose {0}".format(-drop)
-            reasons.append(
-                "no sustained decline, heart rate {0} bpm between the first "
-                "half and the last".format(direction)
-            )
+        reasons.append(self._no_recovery_reason(trend))
 
         if elevation < RESTING_CEILING:
             return RESTING, reasons
         if elevation < MODERATE_CEILING:
             return MODERATE, reasons
         return HIGH, reasons
+
+    @staticmethod
+    def _unusable_reasons(quality):
+        """One line per rule that made rows unusable, with its row count."""
+        return [
+            "{0} row(s) not usable because of {1}".format(count, name)
+            for name, count in sorted(quality["problem_counts"].items())
+        ]
+
+    @staticmethod
+    def _no_recovery_reason(trend):
+        """Explain why a session with enough data was not called recovering."""
+        heart_rate_drop = trend["heart_rate_drop"]
+        if heart_rate_drop is None:
+            return "not recovering, heart rate peaked in the last third of the session"
+
+        activity_drop = trend["activity_drop"]
+        activity_text = (
+            "activity peaked in the last third" if activity_drop is None
+            else "activity fell {0}".format(activity_drop)
+        )
+        return (
+            "not recovering, from the peak to the last third heart rate fell "
+            "{0} bpm and {1}, recovery needs at least {2} bpm and {3}".format(
+                heart_rate_drop, activity_text,
+                RECOVERY_HEART_RATE_DROP, RECOVERY_ACTIVITY_DROP)
+        )

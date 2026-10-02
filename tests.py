@@ -8,7 +8,7 @@ from fitness_analyzer.analysis import (
     average,
     minimum_and_maximum,
     percentage,
-    split_half_difference,
+    peak_to_end_drop,
     summarise,
 )
 from fitness_analyzer.models import Observation, Participant, Session
@@ -208,11 +208,14 @@ class TestStandaloneFunctions(unittest.TestCase):
     def test_summarise_reports_count(self):
         self.assertEqual(summarise([1, 2, 3])["count"], 3)
 
-    def test_split_half_difference_detects_decline(self):
-        self.assertEqual(split_half_difference([10, 10, 2, 2]), 8.0)
+    def test_peak_to_end_drop_detects_decline(self):
+        self.assertEqual(peak_to_end_drop([10, 12, 2, 4]), 9.0)
 
-    def test_split_half_difference_needs_enough_values(self):
-        self.assertIsNone(split_half_difference([1, 2, 3]))
+    def test_peak_to_end_drop_needs_enough_values(self):
+        self.assertIsNone(peak_to_end_drop([12, 2, 3]))
+
+    def test_peak_in_last_third_gives_no_drop(self):
+        self.assertIsNone(peak_to_end_drop([5, 6, 7, 8, 20, 3]))
 
     def test_percentage_handles_zero_total(self):
         self.assertEqual(percentage(3, 0), 0.0)
